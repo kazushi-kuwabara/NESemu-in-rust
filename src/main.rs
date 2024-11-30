@@ -335,6 +335,8 @@ impl CPU {
 
                 self.register_a = new_value;
 
+                self.status = self.status & 0b1111_1110;
+
                 self.status = self.status | (bit7_tmp >> 7); //このやり方だと事前にキャリーがセットされているときにうまくいかない。
                 self.update_zero_and_negative_flags(self.register_a);
             }
@@ -345,6 +347,8 @@ impl CPU {
                 let new_value = value * 2;
 
                 self.mem_write(addr, new_value);
+
+                self.status = self.status & 0b1111_1110;
 
                 self.status = self.status | (bit7_tmp >> 7);
                 self.update_zero_and_negative_flags(new_value);
@@ -369,7 +373,7 @@ impl CPU {
         }
     }
 
-    pub fn run(&mut self) { //runの具体的実装から
+    pub fn run(&mut self) { 
 
         loop {
             let code = self.mem_read(self.program_counter);
