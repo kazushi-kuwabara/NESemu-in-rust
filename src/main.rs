@@ -357,6 +357,38 @@ impl CPU {
       
     }
 
+    fn lsr(&mut self,mode: &AddressingMode){
+
+        match mode {
+            AddressingMode::Accumulator => {
+                let value = self.register_a;
+                let bit0_tmp = value & 0b0000_0001;
+                let new_value = value / 2;
+
+                self.register_a = new_value;
+
+                self.status = self.status & 0b1111_1110;
+
+                self.status = self.status | (bit0_tmp); 
+                self.update_zero_and_negative_flags(self.register_a);
+            }
+            _ => {
+                let addr = self.get_operand_address(mode);
+                let value = self.mem_read(addr);
+                let bit0_tmp = value & 0b0000_0001;
+                let new_value = value / 2;
+
+                self.mem_write(addr, new_value);
+
+                self.status = self.status & 0b1111_1110;
+
+                self.status = self.status | (bit0_tmp);
+                self.update_zero_and_negative_flags(new_value);
+            }
+        };
+      
+    }
+
     /*shift instruction ends here */
 
     fn update_zero_and_negative_flags(&mut self, result:u8) {
@@ -717,10 +749,32 @@ impl CPU {
                     self.program_counter += 2;
                 }
                 0x1E => {
-                    self.asl(&AddressingMode::Absolute_Y);
+                    self.asl(&AddressingMode::Absolute_X);
                     self.program_counter += 2;
                 }
-                /* --------- dey ends here -------------- */
+                /* --------- asl ends here -------------- */
+
+                /* --------- lsr starts here -------------- */
+                0x4A => {
+                    self.lsr(&AddressingMode::Accumulator);
+                }
+                0x46 => {
+                    self.lsr(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                0x56 => {
+                    self.lsr(&AddressingMode::Zeropage_X);
+                    self.program_counter += 1;
+                }
+                0x4E => {
+                    self.asl(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                0x5E => {
+                    self.lsr(&AddressingMode::Absolute_X);
+                    self.program_counter += 2;
+                }
+                /* --------- lsr ends here -------------- */
                 
                 _ => {
                     todo!("")
@@ -985,11 +1039,21 @@ mod test {
     }
 
     #[test]
-    fn test_0x0a_asl_absolute() {
+    fn test_0x0e_asl_absolute() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0x38,0xa9,0x2a,0x8d,0x10,0x00,0x0e,0x10,0x00,0x00]);
         println!(" memory[0x0010] is {:0x}" , cpu.mem_read(0x0010) as u8);
         assert_eq!(cpu.mem_read(0x0010), 0x54);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0000);
+    }
+
+    #[test]
+    fn test_0x4e_lsr_absolute() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38,0xa9,0x2a,0x8d,0x10,0x00,0x4e,0x10,0x00,0x00]);
+        println!(" memory[0x0010] is {:0x}" , cpu.mem_read(0x0010) as u8);
+        assert_eq!(cpu.mem_read(0x0010), 0x15);
         println!(" status  is {:0b}" , cpu.status);
         assert_eq!(cpu.status & 0b1000_0011, 0b0000_0000);
     }
