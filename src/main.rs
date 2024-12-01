@@ -767,7 +767,7 @@ impl CPU {
                     self.program_counter += 1;
                 }
                 0x4E => {
-                    self.asl(&AddressingMode::Absolute);
+                    self.lsr(&AddressingMode::Absolute);
                     self.program_counter += 2;
                 }
                 0x5E => {
@@ -1049,7 +1049,7 @@ mod test {
     }
 
     #[test]
-    fn test_0x4e_lsr_absolute() {
+    fn test_0x4e_lsr_accumulator() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0x38,0xa9,0x2a,0x8d,0x10,0x00,0x4e,0x10,0x00,0x00]);
         println!(" memory[0x0010] is {:0x}" , cpu.mem_read(0x0010) as u8);
