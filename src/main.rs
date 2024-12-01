@@ -389,6 +389,48 @@ impl CPU {
       
     }
 
+    fn rol(&mut self,mode: &AddressingMode){
+
+        match mode {
+            AddressingMode::Accumulator => {
+                let value = self.register_a;
+                let bit7_tmp = value & 0b1000_0000;
+                let carry_tmp = self.status & 0b0000_0001;
+                let tmp_value = value * 2;
+
+                let tmp_value_without_carry = tmp_value & 0b1111_1110;
+
+                let modified_value = tmp_value_without_carry | carry_tmp;
+
+                self.register_a = modified_value;
+
+                self.status = self.status & 0b1111_1110;
+
+                self.status = self.status | (bit7_tmp >> 7); 
+                self.update_zero_and_negative_flags(self.register_a);
+            }
+            _ => {
+                let addr = self.get_operand_address(mode);
+                let value = self.mem_read(addr);
+                let bit7_tmp = value & 0b1000_0000;
+                let carry_tmp = self.status & 0b0000_0001;
+                let tmp_value = value * 2;
+
+                let tmp_value_without_carry = tmp_value & 0b1111_1110;
+
+                let modified_value = tmp_value_without_carry | carry_tmp;
+
+                self.mem_write(addr, modified_value);
+
+                self.status = self.status & 0b1111_1110;
+
+                self.status = self.status | (bit7_tmp >> 7);
+                self.update_zero_and_negative_flags(modified_value);
+            }
+        };
+      
+    }
+
     /*shift instruction ends here */
 
     fn update_zero_and_negative_flags(&mut self, result:u8) {
