@@ -331,7 +331,7 @@ impl CPU {
             AddressingMode::Accumulator => {
                 let value = self.register_a;
                 let bit7_tmp = value & 0b1000_0000;
-                let new_value = value * 2;
+                let new_value = value.wrapping_mul(2);
 
                 self.register_a = new_value;
 
@@ -344,7 +344,7 @@ impl CPU {
                 let addr = self.get_operand_address(mode);
                 let value = self.mem_read(addr);
                 let bit7_tmp = value & 0b1000_0000;
-                let new_value = value * 2;
+                let new_value = value.wrapping_mul(2);
 
                 self.mem_write(addr, new_value);
 
@@ -363,7 +363,7 @@ impl CPU {
             AddressingMode::Accumulator => {
                 let value = self.register_a;
                 let bit0_tmp = value & 0b0000_0001;
-                let new_value = value / 2;
+                let new_value = value.wrapping_div(2);
 
                 self.register_a = new_value;
 
@@ -376,7 +376,7 @@ impl CPU {
                 let addr = self.get_operand_address(mode);
                 let value = self.mem_read(addr);
                 let bit0_tmp = value & 0b0000_0001;
-                let new_value = value / 2;
+                let new_value = value.wrapping_div(2);
 
                 self.mem_write(addr, new_value);
 
@@ -396,7 +396,7 @@ impl CPU {
                 let value = self.register_a;
                 let bit7_tmp = value & 0b1000_0000;
                 let carry_tmp = self.status & 0b0000_0001;
-                let tmp_value = value * 2;
+                let tmp_value = value.wrapping_mul(2);
 
                 let tmp_value_without_carry = tmp_value & 0b1111_1110;
 
@@ -414,7 +414,7 @@ impl CPU {
                 let value = self.mem_read(addr);
                 let bit7_tmp = value & 0b1000_0000;
                 let carry_tmp = self.status & 0b0000_0001;
-                let tmp_value = value * 2;
+                let tmp_value = value.wrapping_mul(2);
 
                 let tmp_value_without_carry = tmp_value & 0b1111_1110;
 
@@ -817,6 +817,28 @@ impl CPU {
                     self.program_counter += 2;
                 }
                 /* --------- lsr ends here -------------- */
+
+                /* --------- rol starts here -------------- */
+                0x2A => {
+                    self.rol(&AddressingMode::Accumulator);
+                }
+                0x26 => {
+                    self.rol(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                0x36 => {
+                    self.rol(&AddressingMode::Zeropage_X);
+                    self.program_counter += 1;
+                }
+                0x2E => {
+                    self.rol(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                0x3E => {
+                    self.rol(&AddressingMode::Absolute_X);
+                    self.program_counter += 2;
+                }
+                /* --------- rol ends here -------------- */
                 
                 _ => {
                     todo!("")
@@ -1091,11 +1113,61 @@ mod test {
     }
 
     #[test]
+    fn test_0x0a_asl_accumulator_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x18,0xa9,0x80,0x0a,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x00);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0011);
+    }
+
+    #[test]
     fn test_0x4e_lsr_accumulator() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0x38,0xa9,0x2a,0x8d,0x10,0x00,0x4e,0x10,0x00,0x00]);
         println!(" memory[0x0010] is {:0x}" , cpu.mem_read(0x0010) as u8);
         assert_eq!(cpu.mem_read(0x0010), 0x15);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0000);
+    }
+
+    #[test]
+    fn test_0x4a_lsr_accumulator_with_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x18,0xa9,0x01,0x4a,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x00);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0011);
+    }
+
+    #[test]
+    fn test_0x2a_rol_accumulator() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38,0xa9,0x2a,0x2a,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x55);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0000);
+    }
+
+    #[test] //overflow_multiple ?
+    fn test_0x2a_rol_accumulator_with_no_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x18,0xa9,0x80,0x2a,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x00);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0011);
+    }
+
+    #[test] //overflow_multiple ?
+    fn test_0x2a_rol_accumulator_with_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38,0xa9,0x00,0x2a,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x01);
         println!(" status  is {:0b}" , cpu.status);
         assert_eq!(cpu.status & 0b1000_0011, 0b0000_0000);
     }
