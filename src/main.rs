@@ -466,6 +466,24 @@ impl CPU {
 
     /*shift instruction ends here */
 
+    /*arithmetic instruction starts here */
+    fn and(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+        let  value = self.mem_read(addr);
+
+        self.register_a = self.register_a & value;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn ora(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+        let  value = self.mem_read(addr);
+
+        self.register_a = self.register_a | value;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+    /*arithmetic instruction ends here */
+
     fn update_zero_and_negative_flags(&mut self, result:u8) {
         if result == 0 {
             self.status = self.status | 0b0000_0010;
@@ -894,6 +912,88 @@ impl CPU {
                     self.program_counter += 2;
                 }
                 /* --------- ror ends here -------------- */
+
+                /* --------- and starts here -------------- */
+                0x29 => {
+                    self.and(&AddressingMode::Immediate);
+                    self.program_counter += 1;
+                }
+                0x25 => {
+                    self.and(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                
+                0x35 => {
+                    self.and(&AddressingMode::Zeropage_X);
+                    self.program_counter += 1;
+                }
+                0x2D => {
+                    self.and(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                
+                0x3D => {
+                    self.and(&AddressingMode::Absolute_X);
+                    self.program_counter += 2;
+                }
+                0x39 => {
+                    self.and(&AddressingMode::Absolute_Y);
+                    self.program_counter += 2;
+                }
+                
+                0x21 => {
+                    self.and(&AddressingMode::Indirect_X);
+                    self.program_counter += 1;
+                }
+                
+                0x31 => {
+                    self.and(&AddressingMode::Indirect_Y);
+                    self.program_counter += 1;
+                }
+                    
+                /* --------- and ends here -------------- */
+
+                /* --------- ora starts here -------------- */
+                0x09 => {
+                    self.ora(&AddressingMode::Immediate);
+                    self.program_counter += 1;
+                }
+                0x05 => {
+                    self.ora(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                
+                0x15 => {
+                    self.ora(&AddressingMode::Zeropage_X);
+                    self.program_counter += 1;
+                }
+                0x0D => {
+                    self.ora(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                
+                0x1D => {
+                    self.ora(&AddressingMode::Absolute_X);
+                    self.program_counter += 2;
+                }
+                0x19 => {
+                    self.ora(&AddressingMode::Absolute_Y);
+                    self.program_counter += 2;
+                }
+                
+                0x01 => {
+                    self.ora(&AddressingMode::Indirect_X);
+                    self.program_counter += 1;
+                }
+                
+                0x11 => {
+                    self.ora(&AddressingMode::Indirect_Y);
+                    self.program_counter += 1;
+                }
+                    
+                /* --------- ora ends here -------------- */
+                    
+                
                 
                 _ => {
                     todo!("")
@@ -1235,6 +1335,35 @@ mod test {
         assert_eq!(cpu.register_a, 0x00);
         println!(" status  is {:0b}" , cpu.status);
         assert_eq!(cpu.status & 0b1000_0011, 0b0000_0011);
+    }
+
+    #[test] 
+    fn test_0x29_and_absolute() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0xaa,0x8d,0x10,0x00,0xa9,0x5d,0x2d,0x10,0x00,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x08);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0000);
+    }
+
+    #[test] 
+    fn test_0x29_and_absolute_negative_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0xaa,0x8d,0x10,0x00,0xa9,0xd5,0x2d,0x10,0x00,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x80);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b1000_0000);
+    }
+    #[test] 
+    fn test_0x0d_ora_absolute() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0xaa,0x8d,0x10,0x00,0xa9,0x55,0x0d,0x10,0x00,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0xff);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b1000_0000);
     }
 
     
