@@ -1,3 +1,4 @@
+use core::borrow;
 use std::{collections::btree_map::{self, Values}, ops::Add};
 
 pub struct CPU {
@@ -431,6 +432,38 @@ impl CPU {
       
     }
 
+    fn ror(&mut self , mode:&AddressingMode){
+
+        let (value,borrow) = match mode {
+            AddressingMode::Accumulator => {
+
+                let mut  value = self.register_a;
+                let borrow = value % 2;
+                value = value.wrapping_div(2);
+                value = value | ((self.status & 0b0000_0001) << 7);
+                self.register_a = value;
+                (value , borrow)
+            }
+            _ => { 
+                let addr = self.get_operand_address(mode);
+                let mut  value = self.mem_read(addr);
+
+                let borrow = value % 2;
+                value = value.wrapping_div(2);
+                value = value | ((self.status & 0b0000_0001) <<  7);
+                self.mem_write(addr, value);
+                (value , borrow)
+            }
+        };
+        self.status = if borrow == 1 {
+            self.status | 0b0000_0001
+        } else {
+            self.status & 0b1111_1110
+        };
+        self.update_zero_and_negative_flags(value);
+
+    }
+
     /*shift instruction ends here */
 
     fn update_zero_and_negative_flags(&mut self, result:u8) {
@@ -839,6 +872,28 @@ impl CPU {
                     self.program_counter += 2;
                 }
                 /* --------- rol ends here -------------- */
+
+                /* --------- ror starts here -------------- */
+                0x6A => {
+                    self.ror(&AddressingMode::Accumulator);
+                }
+                0x66 => {
+                    self.ror(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                0x76 => {
+                    self.ror(&AddressingMode::Zeropage_X);
+                    self.program_counter += 1;
+                }
+                0x6E => {
+                    self.ror(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                0x7E => {
+                    self.ror(&AddressingMode::Absolute_X);
+                    self.program_counter += 2;
+                }
+                /* --------- ror ends here -------------- */
                 
                 _ => {
                     todo!("")
@@ -1170,6 +1225,16 @@ mod test {
         assert_eq!(cpu.register_a, 0x01);
         println!(" status  is {:0b}" , cpu.status);
         assert_eq!(cpu.status & 0b1000_0011, 0b0000_0000);
+    }
+
+    #[test] //overflow_multiple ?
+    fn test_0x6a_ror_accumulator_with_zero() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x18,0xa9,0x01,0x6a,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x00);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0011);
     }
 
     
