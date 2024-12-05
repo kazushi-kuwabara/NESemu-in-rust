@@ -1,5 +1,5 @@
 use core::borrow;
-use std::{collections::btree_map::{self, Values}, ops::Add};
+use std::{collections::btree_map::{self, Values}, ops::Add, result};
 
 pub struct CPU {
     pub register_a:u8,
@@ -481,6 +481,44 @@ impl CPU {
 
         self.register_a = self.register_a | value;
         self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn eor(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+        let  value = self.mem_read(addr);
+
+        self.register_a = self.register_a ^ value;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn bit(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        let bit6_tmp = value & 0b0100_0000;
+        let bit7_tmp = value & 0b1000_0000;
+
+        let result = self.register_a & value;
+
+        self.status = if result == 0 {
+            self.status | 0b0000_0010
+        } else {
+            self.status & 0b1111_1101
+        };
+
+        self.status = if bit6_tmp == 0b0100_0000 {
+            self.status | ((bit6_tmp))
+        } else {
+            self.status & 0b1011_1111
+        };
+
+        self.status = if bit7_tmp == 0b1000_0000 {
+            self.status |  ((bit7_tmp))
+        } else {
+            self.status & 0b0111_1111
+        };
+
+
     }
     /*arithmetic instruction ends here */
 
@@ -992,6 +1030,58 @@ impl CPU {
                 }
                     
                 /* --------- ora ends here -------------- */
+
+                /* --------- eor starts here -------------- */
+                0x49 => {
+                    self.eor(&AddressingMode::Immediate);
+                    self.program_counter += 1;
+                }
+                0x45 => {
+                    self.eor(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                
+                0x55 => {
+                    self.eor(&AddressingMode::Zeropage_X);
+                    self.program_counter += 1;
+                }
+                0x4D => {
+                    self.eor(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                
+                0x5D => {
+                    self.eor(&AddressingMode::Absolute_X);
+                    self.program_counter += 2;
+                }
+                0x59 => {
+                    self.eor(&AddressingMode::Absolute_Y);
+                    self.program_counter += 2;
+                }
+                
+                0x41 => {
+                    self.eor(&AddressingMode::Indirect_X);
+                    self.program_counter += 1;
+                }
+                
+                0x51 => {
+                    self.eor(&AddressingMode::Indirect_Y);
+                    self.program_counter += 1;
+                }
+                    
+                /* --------- ora ends here -------------- */
+
+                /* --------- bit starts here -------------- */
+                0x24 => {
+                    self.bit(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                0x2C => {
+                    self.bit(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+
+                /* --------- bit ends here -------------- */
                     
                 
                 
@@ -1364,6 +1454,32 @@ mod test {
         assert_eq!(cpu.register_a, 0xff);
         println!(" status  is {:0b}" , cpu.status);
         assert_eq!(cpu.status & 0b1000_0011, 0b1000_0000);
+    }
+
+    #[test] 
+    fn test_0x4d_eor_absolute_negative_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0x80,0x8d,0x10,0x00,0xa9,0x01,0x4d,0x10,0x00,0x00]);
+        println!(" register_a is {:0x}" , cpu.register_a as u8);
+        assert_eq!(cpu.register_a, 0x81);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b1000_0000);
+    }
+
+    #[test] 
+    fn test_0x2c_bit_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0x80,0x2c,0x00]);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1000_0011, 0b0000_0010);
+    }
+
+    #[test] 
+    fn test_0x2c_bit_absolute_clear_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0x40,0x8d,0x10,0x00,0xa9,0x00,0x2c,0x10,0x00,0x00]);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1100_0011, 0b0100_0010);
     }
 
     
