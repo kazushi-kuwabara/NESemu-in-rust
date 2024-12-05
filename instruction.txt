@@ -2,7 +2,7 @@ Access	(LDA) (STA)	(LDX)  (STX) (LDY)	(STY)
 Transfer	(TAX)  (TXA)  (TAY) (TYA)				
 Arithmetic	(ADC)  (SBC) (INC)	(DEC)	(INX) (DEX)	(INY)	(DEY)
 Shift	(ASL)	(LSR)	(ROL)	(ROR)				
-Bitwise	(AND)	(ORA)	(EOR)	BIT				
+Bitwise	(AND)	(ORA)	(EOR)	(BIT)				
 Compare	CMP	CPX	CPY					
 Branch	BCC	BCS	BEQ	BNE	BPL	BMI	BVC	BVS
 Jump	JMP	JSR	RTS	(BRK) RTI			
@@ -11,5 +11,5 @@ Flags	(CLC) (SEC) CLI	SEI	CLD	SED	CLV
 Other	NOP	
 
 テストまで完全に終了した命令；
-ADC,SBC,STX,LDY,STY,TXA TAY TYA,INC,DEC,INY,DEY,ASL,LSR,ROL,ROR,AND,ORA,EOR
+ADC,SBC,STX,LDY,STY,TXA TAY TYA,INC,DEC,INY,DEY,ASL,LSR,ROL,ROR,AND,ORA,EOR,BIT
 

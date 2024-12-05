@@ -1,5 +1,5 @@
 use core::borrow;
-use std::{collections::btree_map::{self, Values}, ops::Add, result};
+use std::{collections::btree_map::{self, Values}, fs::read_link, ops::Add, result};
 
 pub struct CPU {
     pub register_a:u8,
@@ -521,6 +521,34 @@ impl CPU {
 
     }
     /*arithmetic instruction ends here */
+
+    /*compare instruction starts here */
+    fn cmp(&mut self, mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        let result = self.register_a - value;
+
+        self.status = if result == 0 {
+            self.status | 0b0000_0010
+        } else {
+            self.status & !(0b0000_0010)
+        };
+
+        self.status = if !(result & 0b1000_0000 == 0b1000_0000) {
+            self.status | 0b0000_0001
+        } else {
+            self.status & !(0b0000_0001)
+        };
+
+        self.status = if result & 0b1000_0000 == 0b1000_0000 {
+            self.status | 0b1000_0000
+        } else {
+            self.status & !(0b1000_0000)
+        };
+    }
+
+
 
     fn update_zero_and_negative_flags(&mut self, result:u8) {
         if result == 0 {
@@ -1082,6 +1110,41 @@ impl CPU {
                 }
 
                 /* --------- bit ends here -------------- */
+
+                /* --------- cmp starts here -------------- */
+                0xC9 => {
+                    self.cmp(&AddressingMode::Immediate);
+                    self.program_counter += 1;
+                }
+                0xC5 => {
+                    self.cmp(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                0xD5 => {
+                    self.cmp(&AddressingMode::Zeropage_X);
+                    self.program_counter += 1;
+                }
+                0xCD => {
+                    self.cmp(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                0xDD => {
+                    self.cmp(&AddressingMode::Absolute_X);
+                    self.program_counter += 2;
+                }
+                0xD9 => {
+                    self.cmp(&AddressingMode::Absolute_Y);
+                    self.program_counter += 2;
+                }
+                0xC1 => {
+                    self.cmp(&AddressingMode::Indirect_X);
+                    self.program_counter += 1;
+                }
+                0xD1 => {
+                    self.cmp(&AddressingMode::Indirect_Y);
+                    self.program_counter += 1;
+                }
+                /* --------- cmp ends here -------------- */
                     
                 
                 
@@ -1480,6 +1543,14 @@ mod test {
         cpu.load_and_run(vec![0xa9,0x40,0x8d,0x10,0x00,0xa9,0x00,0x2c,0x10,0x00,0x00]);
         println!(" status  is {:0b}" , cpu.status);
         assert_eq!(cpu.status & 0b1100_0011, 0b0100_0010);
+    }
+
+    #[test] 
+    fn test_0xcd_cmp_absolute_with_carry_and_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0x40,0x8d,0x10,0x00,0xcd,0x10,0x00,0x00]);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1100_0011, 0b0000_0011);
     }
 
     
