@@ -23,6 +23,7 @@ pub enum AddressingMode {
     Absolute_Y,
     Indirect_X,
     Indirect_Y,
+    Relative,
     NoneAddressinng,
 }
 
@@ -75,6 +76,12 @@ impl CPU {
                 let ptr = (hi as u16) << 8 | (lo as u16);
                 let addr = ptr.wrapping_add(self.register_y as u16);
                 addr
+            }
+
+            AddressingMode::Relative => {
+                let addr = self.mem_read(self.program_counter);
+                let tmp = (addr as i8) as i32 + self.program_counter as i32;
+                tmp as u16
             }
 
             AddressingMode::NoneAddressinng => {
@@ -325,6 +332,7 @@ impl CPU {
     }
 
     /*shift instruction starts from here */
+    
 
     fn asl(&mut self,mode: &AddressingMode){
 
@@ -547,6 +555,68 @@ impl CPU {
             self.status & !(0b1000_0000)
         };
     }
+    fn cpx(&mut self, mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        let result = self.register_x - value;
+
+        self.status = if result == 0 {
+            self.status | 0b0000_0010
+        } else {
+            self.status & !(0b0000_0010)
+        };
+
+        self.status = if !(result & 0b1000_0000 == 0b1000_0000) {
+            self.status | 0b0000_0001
+        } else {
+            self.status & !(0b0000_0001)
+        };
+
+        self.status = if result & 0b1000_0000 == 0b1000_0000 {
+            self.status | 0b1000_0000
+        } else {
+            self.status & !(0b1000_0000)
+        };
+    }
+    fn cpy(&mut self, mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        let result = self.register_y - value;
+
+        self.status = if result == 0 {
+            self.status | 0b0000_0010
+        } else {
+            self.status & !(0b0000_0010)
+        };
+
+        self.status = if !(result & 0b1000_0000 == 0b1000_0000) {
+            self.status | 0b0000_0001
+        } else {
+            self.status & !(0b0000_0001)
+        };
+
+        self.status = if result & 0b1000_0000 == 0b1000_0000 {
+            self.status | 0b1000_0000
+        } else {
+            self.status & !(0b1000_0000)
+        };
+    }
+    /*compare instruction ends here */
+
+    /*branch instruction starts from here */
+    fn bcc(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+
+        if self.status & 0b0000_0001 == 0 {
+            self.program_counter = addr;
+        }
+    }
+
+    /*branch instruction ends from here */
+
+
 
 
 
@@ -1145,6 +1215,42 @@ impl CPU {
                     self.program_counter += 1;
                 }
                 /* --------- cmp ends here -------------- */
+                /* --------- cpx starts here -------------- */
+                0xE0 => {
+                    self.cpx(&AddressingMode::Immediate);
+                    self.program_counter += 1;
+                }
+                0xE4 => {
+                    self.cpx(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                0xEC => {
+                    self.cpx(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                /* --------- cpx ends here -------------- */
+                /* --------- cpy starts here -------------- */
+                0xC0 => {
+                    self.cpy(&AddressingMode::Immediate);
+                    self.program_counter += 1;
+                }
+                0xC4 => {
+                    self.cpy(&AddressingMode::Zeropage);
+                    self.program_counter += 1;
+                }
+                0xCC => {
+                    self.cpy(&AddressingMode::Absolute);
+                    self.program_counter += 2;
+                }
+                /* --------- cpy ends here -------------- */
+
+                /* --------- bcc starts here -------------- */
+                0x90 => {
+                    self.bcc(&AddressingMode::Relative);
+                    self.program_counter += 1;
+                }
+                /* --------- bcc ends here -------------- */
+
                     
                 
                 
@@ -1489,6 +1595,7 @@ mod test {
         println!(" status  is {:0b}" , cpu.status);
         assert_eq!(cpu.status & 0b1000_0011, 0b0000_0011);
     }
+    
 
     #[test] 
     fn test_0x29_and_absolute() {
@@ -1551,6 +1658,44 @@ mod test {
         cpu.load_and_run(vec![0xa9,0x40,0x8d,0x10,0x00,0xcd,0x10,0x00,0x00]);
         println!(" status  is {:0b}" , cpu.status);
         assert_eq!(cpu.status & 0b1100_0011, 0b0000_0011);
+    }
+
+    #[test] 
+    fn test_0xec_cpx_absolute_with_carry_and_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2,0x40,0x8e,0x10,0x00,0xec,0x10,0x00,0x00]);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1100_0011, 0b0000_0011);
+    }
+    #[test] 
+    fn test_0xcc_cpy_absolute_with_carry_and_zero_flag() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa0,0x40,0x8c,0x10,0x00,0xcc,0x10,0x00,0x00]);
+        println!(" status  is {:0b}" , cpu.status);
+        assert_eq!(cpu.status & 0b1100_0011, 0b0000_0011);
+    }
+
+    #[test]
+    fn test_0x90_bcc_not_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x90,0x02,0xe8,0xe8,0xe8,0x00]);
+        assert_eq!(cpu.register_x, 1);
+    }
+
+    #[test]
+    fn test_0x90_bcc_wiht_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38,0x90,0x02,0xe8,0xe8,0xe8,0x00]);
+        assert_eq!(cpu.register_x, 3);
+    }
+
+    #[test]
+    fn test_0x90_bcc_wiht_no_carry_minus() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0x00,0x8d,0xff,0x7f,0xa9,0xe8,0x8d,0xfe,0x7f,0x90,0xf2,0x00]);
+
+        println!("register_x is {}" , cpu.register_x);
+        assert_eq!(cpu.register_x,1)
     }
 
     
