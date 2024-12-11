@@ -1,5 +1,14 @@
 use core::borrow;
-use std::{collections::btree_map::{self, Values}, fs::read_link, ops::Add, result};
+use std::{collections::btree_map::{self, Values}, fs::read_link, ops::Add, path::is_separator, result};
+
+pub const CARRY_FLAG:u8 = 0b0000_0001;
+pub const NEGATIVE_FLAG:u8 = 0b1000_0000;
+pub const ZERO_FLAG:u8 = 0b0000_0010;
+pub const OVERFOW_FLAG:u8 = 0b0100_0000;
+
+pub fn is_flag_set(flag:u8,x:u8) -> bool {
+      x & flag > 0
+}
 
 pub struct CPU {
     pub register_a:u8,
@@ -10,7 +19,7 @@ pub struct CPU {
     memory: [u8;0xFFFF],
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(non_camel_case_types)]
 pub enum AddressingMode {
     Accumulator,
@@ -606,14 +615,58 @@ impl CPU {
     /*compare instruction ends here */
 
     /*branch instruction starts from here */
-    fn bcc(&mut self , mode:&AddressingMode){
-        let addr = self.get_operand_address(mode);
-
-        if self.status & 0b0000_0001 == 0 {
-            self.program_counter = addr;
+    fn branch(&mut self, mode: &AddressingMode) {
+        if mode == &AddressingMode::Relative {
+          let addr = self.get_operand_address(mode);
+          self.program_counter = addr;
         }
     }
 
+    fn bcc(&mut self , mode:&AddressingMode){
+        if is_flag_set(CARRY_FLAG, self.status) == false {
+            self.branch(mode);
+        }
+    }
+    fn bcs(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+
+        if is_flag_set(CARRY_FLAG, self.status) == true {
+            self.program_counter = addr;
+        }
+    }
+    fn beq(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+
+        if is_flag_set(ZERO_FLAG, self.status) == true {
+            self.program_counter = addr;
+        }
+    }
+    fn bne(&mut self , mode:&AddressingMode){
+        if is_flag_set(ZERO_FLAG, self.status) == false {
+            self.branch(mode);
+        }
+    }
+    fn bpl(&mut self , mode:&AddressingMode){
+        if is_flag_set(NEGATIVE_FLAG, self.status) == false {
+            self.branch(mode);
+        }
+    }
+    fn bmi(&mut self , mode:&AddressingMode){
+        if is_flag_set(NEGATIVE_FLAG, self.status) == true {
+            self.branch(mode);
+        }
+    }
+    fn bvc(&mut self , mode:&AddressingMode){
+        if is_flag_set(OVERFOW_FLAG, self.status) == false {
+            self.branch(mode);
+        }
+    }
+
+    fn bvs(&mut self , mode:&AddressingMode){
+        if is_flag_set(OVERFOW_FLAG, self.status) == true {
+            self.branch(mode);
+        }
+    }
     /*branch instruction ends from here */
 
 
@@ -1250,6 +1303,54 @@ impl CPU {
                     self.program_counter += 1;
                 }
                 /* --------- bcc ends here -------------- */
+
+                /* --------- bcs starts here -------------- */
+                0xB0 => {
+                    self.bcs(&AddressingMode::Relative);
+                    self.program_counter += 1;
+                }
+                /* --------- bcc ends here -------------- */
+                /* --------- beq starts here -------------- */
+                0xF0 => {
+                    self.beq(&AddressingMode::Relative);
+                    self.program_counter += 1;
+                }
+                /* --------- beq ends here -------------- */
+
+                /* --------- bne starts here -------------- */
+                0xD0 => {
+                    self.bne(&AddressingMode::Relative);
+                    self.program_counter += 1;
+                }
+                /* --------- bne ends here -------------- */
+
+                /* --------- bpl starts here -------------- */
+                0x10 => {
+                    self.bpl(&AddressingMode::Relative);
+                    self.program_counter += 1;
+                }
+                /* --------- bpl ends here -------------- */
+
+                /* --------- bmi starts here -------------- */
+                0x30 => {
+                    self.bmi(&AddressingMode::Relative);
+                    self.program_counter += 1;
+                }
+                /* --------- bmi ends here -------------- */
+
+                /* --------- bvc starts here -------------- */
+                0x50 => {
+                    self.bvc(&AddressingMode::Relative);
+                    self.program_counter += 1;
+                }
+                /* --------- bvc ends here -------------- */
+
+                /* --------- bvs starts here -------------- */
+                0x70 => {
+                    self.bvs(&AddressingMode::Relative);
+                    self.program_counter += 1;
+                }
+                /* --------- bvs ends here -------------- */
 
                     
                 
