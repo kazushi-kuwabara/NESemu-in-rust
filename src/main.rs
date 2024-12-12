@@ -16,6 +16,7 @@ pub struct CPU {
     pub register_y:u8,
     pub status:u8,
     pub program_counter:u16,
+    stackpointer:u8,
     memory: [u8;0xFFFF],
 }
 
@@ -30,6 +31,7 @@ pub enum AddressingMode {
     Absolute,
     Absolute_X,
     Absolute_Y,
+    Indirect,
     Indirect_X,
     Indirect_Y,
     Relative,
@@ -65,6 +67,12 @@ impl CPU {
                 let pos = self.mem_read_u16(self.program_counter);
                 let addr = pos.wrapping_add(self.register_y as u16);
                 addr
+            }
+
+            AddressingMode::Indirect => {
+                let addr = self.mem_read_u16(self.program_counter);
+                let value = self.mem_read_u16(addr);
+                value
             }
 
             AddressingMode::Indirect_X => {
@@ -153,6 +161,7 @@ impl CPU {
             register_y:0,
             status:0,
             program_counter:0,
+            stackpointer:0xff,
             memory:[0u8; 0xFFFF],
         }
     }
@@ -668,6 +677,55 @@ impl CPU {
         }
     }
     /*branch instruction ends from here */
+
+    /*jump instruction starts from here */
+    fn push(&mut self,data:u16) {
+        let hi = (data >> 8) as u8;
+        let lo = (data & 0xff) as u8;
+
+        self.mem_write(0x0100 + (self.stackpointer as u16), hi);
+        self.mem_write(0x0100 + ((self.stackpointer -1) as u16), lo);
+        self.stackpointer = self.stackpointer - 2;
+    }
+    //サブルーチン後はjsrの次の命令から開始する必要がある。
+    fn push_pc(&mut self){
+        self.push(self.program_counter + 2);
+    }
+
+    fn jmp(&mut self , mode: &AddressingMode){
+        let value = match mode {
+            &AddressingMode::Absolute => {
+                let value = self.mem_read_u16(self.program_counter);
+                value
+            }
+            &AddressingMode::Indirect => {
+                let value = self.get_operand_address(&AddressingMode::Indirect);
+                value
+            }
+            _ => {
+                panic!("mode {:?} is not supported" , mode);
+            }
+        };
+            
+        self.program_counter = value;
+    }
+
+    fn jsr(&mut self, mode:&AddressingMode){
+        let _value = match mode  {
+            &AddressingMode::Absolute => {
+                let value = self.mem_read_u16(self.program_counter);
+                value
+            }
+
+            _ => {
+                panic!("mode {:?} is not supported" , mode);
+            }
+        };
+  
+        self.push_pc();
+        self.program_counter = _value;
+    }
+    /*jump instruction ends from here */
 
 
 
@@ -1352,6 +1410,20 @@ impl CPU {
                 }
                 /* --------- bvs ends here -------------- */
 
+                /* --------- jmp starts here -------------- */
+                0x4C => {
+                    self.jmp(&AddressingMode::Absolute);
+                    //self.program_counter += 2;
+                }
+                0x6C => {
+                    self.jmp(&AddressingMode::Absolute);
+                    //self.program_counter += 2;
+                }
+                /* --------- jmp ends here -------------- */
+
+                
+             
+
                     
                 
                 
@@ -1794,6 +1866,15 @@ mod test {
     fn test_0x90_bcc_wiht_no_carry_minus() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9,0x00,0x8d,0xff,0x7f,0xa9,0xe8,0x8d,0xfe,0x7f,0x90,0xf2,0x00]);
+
+        println!("register_x is {}" , cpu.register_x);
+        assert_eq!(cpu.register_x,1)
+    }
+
+    #[test]
+    fn test_0x4c_jmp_absolute() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9,0x00,0x8d,0xff,0x7f,0xa9,0xe8,0x8d,0xfe,0x7f,0x4c,0xfe,0x7f,0x00]);
 
         println!("register_x is {}" , cpu.register_x);
         assert_eq!(cpu.register_x,1)
