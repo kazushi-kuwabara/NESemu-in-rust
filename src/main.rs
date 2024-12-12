@@ -2,6 +2,10 @@ use core::borrow;
 use std::{collections::btree_map::{self, Values}, fs::read_link, ops::Add, path::is_separator, result};
 
 pub const CARRY_FLAG:u8 = 0b0000_0001;
+pub const INTERRUPT_FLAG:u8 = 0b0000_0100;
+pub const DECIMAL_FLAG:u8 = 0b0000_1000;
+pub const BREAK_FLAG:u8 = 0b0001_0000;
+pub const INVALID_FLAG:u8 = 0b0010_0000;
 pub const NEGATIVE_FLAG:u8 = 0b1000_0000;
 pub const ZERO_FLAG:u8 = 0b0000_0010;
 pub const OVERFOW_FLAG:u8 = 0b0100_0000;
@@ -16,7 +20,7 @@ pub struct CPU {
     pub register_y:u8,
     pub status:u8,
     pub program_counter:u16,
-    stackpointer:u8,
+    pub stackpointer:u8,
     memory: [u8;0xFFFF],
 }
 
@@ -691,6 +695,24 @@ impl CPU {
     fn push_pc(&mut self){
         self.push(self.program_counter + 2);
     }
+    //ただスタックからpcをとり出すだけ。
+    fn pop_pc(&mut self) -> u16 {
+        let hi = self.mem_read(0x0100 + (self.stackpointer as u16));
+        let lo = self.mem_read(0x0100 + ((self.stackpointer - 1 ) as u16));
+
+        self.stackpointer = self.stackpointer + 2;
+
+        let pc = ((hi << 8) as u16) | (lo as u16) + 1;
+        pc
+    }
+
+    fn pop_flag(&mut self) -> u8 {
+        let flag = self.mem_read(0x0100 + (self.stackpointer as u16));
+        self.stackpointer += 1;
+        flag
+    }
+
+   
 
     fn jmp(&mut self , mode: &AddressingMode){
         let value = match mode {
@@ -726,6 +748,19 @@ impl CPU {
         self.program_counter = _value;
     }
     /*jump instruction ends from here */
+
+    fn rts(&mut self) {
+         self.program_counter = self.pop_pc() + 1;
+    }
+
+    fn rti(&mut self){
+        //pop status flags
+        self.status = self.pop_flag();
+        //bit 5 is always 1
+        self.status = self.status | INVALID_FLAG;
+
+        self.program_counter = self.pop_pc();
+    }
 
 
 
