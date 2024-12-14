@@ -802,6 +802,31 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_x);
     }
 
+    fn cli(&mut self){
+        //CLI命令による割り込み禁止フラグの更新は1命令文遅れる。次の命令が行われるのと同タイミングでフラグを更新する。
+        //self.program_counter += 1;
+        self.status = self.status & !INTERRUPT_FLAG;
+
+    }
+
+    fn sei(&mut self){
+        //CLI命令と同様に１命令文更新が遅れる。
+        //self.program_counter += 1;
+        self.status  = self.status | INTERRUPT_FLAG;
+    }
+
+    fn cld(&mut self){
+        self.status = self.status & !DECIMAL_FLAG;
+    }
+
+    fn sed(&mut self){
+        self.status = self.status | DECIMAL_FLAG;
+    }
+
+    fn clv(&mut self){
+        self.status = self.status & !OVERFOW_FLAG;
+    }
+
 
 
 
@@ -1521,6 +1546,26 @@ impl CPU {
                     self.tsx();
                 }
 
+                0x58 => {
+                    self.cli();
+                }
+
+                0x78 => {
+                    self.sei();
+                }
+
+                0xD8 => {
+                    self.cld();
+                }
+
+                0xF8 => {
+                    self.sed();
+                }
+                
+                0xB8 => {
+                    self.clv();
+                }
+
                 _ => {
                     todo!("")
                 }
@@ -2024,6 +2069,41 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa2 ,0x50 ,0x9a,0xa2,0x40,0xba ,0x00]);
         assert_eq!(cpu.register_x,0x50);
+    }
+
+    #[test]
+    fn test_0x78_sei() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x78 ,0x00]);
+        assert_eq!(is_flag_set(INTERRUPT_FLAG, cpu.status),true);
+    }
+
+    #[test]
+    fn test_0x58_cli() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x78,0x58 ,0x00]);
+        assert_eq!(is_flag_set(INTERRUPT_FLAG, cpu.status),false);
+    }
+
+    #[test]
+    fn test_0xf8_sed() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xf8,0x00]);
+        assert_eq!(is_flag_set(DECIMAL_FLAG, cpu.status),true);
+    }
+
+    #[test]
+    fn test_0xd8_cld() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xf8,0xd8,0x00]);
+        assert_eq!(is_flag_set(DECIMAL_FLAG, cpu.status),false);
+    }
+
+    #[test]
+    fn test_0xb8_clv() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9 ,0x7f ,0x18, 0x69, 0x01 ,0x8d ,0x00 ,0x02,0xb8,0x00]);
+        assert_eq!(is_flag_set(OVERFOW_FLAG, cpu.status),false);
     }
 
     
