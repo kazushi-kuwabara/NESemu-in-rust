@@ -152,6 +152,8 @@ impl CPU {
     pub fn reset(&mut self) {
         self.register_a = 0;
         self.register_x = 0;
+        self.register_y = 0;
+        self.stackpointer = 0xff;
         self.status = 0;
 
         self.program_counter = self.mem_read_u16(0xFFFC);
@@ -697,18 +699,19 @@ impl CPU {
     }
     //ただスタックからpcをとり出すだけ。
     fn pop_pc(&mut self) -> u16 {
+        self.stackpointer = self.stackpointer + 2;
+
         let hi = self.mem_read(0x0100 + (self.stackpointer as u16));
         let lo = self.mem_read(0x0100 + ((self.stackpointer - 1 ) as u16));
 
-        self.stackpointer = self.stackpointer + 2;
 
-        let pc = ((hi << 8) as u16) | (lo as u16) + 1;
+        let pc = (((hi as u16) << 8)) | (lo as u16) + 1;
         pc
     }
 
     fn pop_flag(&mut self) -> u8 {
-        let flag = self.mem_read(0x0100 + (self.stackpointer as u16));
         self.stackpointer += 1;
+        let flag = self.mem_read(0x0100 + (self.stackpointer as u16));
         flag
     }
 
@@ -755,11 +758,48 @@ impl CPU {
 
     fn rti(&mut self){
         //pop status flags
-        self.status = self.pop_flag();
+        self.status = self.pop_flag() & !BREAK_FLAG;
         //bit 5 is always 1
         self.status = self.status | INVALID_FLAG;
 
         self.program_counter = self.pop_pc();
+    }
+
+    fn brk(&mut self) {
+      
+      self.program_counter  = self.mem_read_u16(0xFFFE);
+      self.status = self.status | BREAK_FLAG;
+
+    }
+    
+    fn pha(&mut self){
+        self.mem_write(0x0100 + (self.stackpointer as u16), self.register_a);
+        self.stackpointer = self.stackpointer - 1;
+    }
+
+    fn pla(&mut self){
+        self.stackpointer += 1;
+        self.register_a = self.mem_read(0x0100 + (self.stackpointer as u16));
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn php(&mut self){
+        self.mem_write(0x0100 + (self.stackpointer as u16), self.status | BREAK_FLAG | INVALID_FLAG );
+        self.stackpointer = self.stackpointer - 1;
+    }
+
+    fn plp(&mut self){
+        self.stackpointer += 1;
+        self.status = self.mem_read(0x0100 + (self.stackpointer as u16)) ;
+    }
+
+    fn txs(&mut self){
+        self.stackpointer = self.register_x;
+    }
+
+    fn tsx(&mut self){
+        self.register_x = self.stackpointer;
+        self.update_zero_and_negative_flags(self.register_x);
     }
 
 
@@ -879,11 +919,7 @@ impl CPU {
                 }
                 /* --------- LDY ends over -------------- */
 
-                /* --------- BRK starts here -------------- */
-                0x00 => {
-                    return ;
-                }
-                /* --------- BRK is over -------------- */
+                
 
                 /* --------- STA start from here -------------- */
 
@@ -1456,12 +1492,35 @@ impl CPU {
                 }
                 /* --------- jmp ends here -------------- */
 
-                
-             
+                0x00 => {
+                    return;
+                }
 
-                    
-                
-                
+
+                0x48 => {
+                    self.pha();
+                }
+
+                0x68 => {
+                    self.pla();
+                }
+
+                0x08 => {
+                    self.php();
+                }
+
+                0x28 => {
+                    self.plp();
+                }
+
+                0x9A => {
+                    self.txs();
+                }
+
+                0xBA => {
+                    self.tsx();
+                }
+
                 _ => {
                     todo!("")
                 }
@@ -1913,6 +1972,58 @@ mod test {
 
         println!("register_x is {}" , cpu.register_x);
         assert_eq!(cpu.register_x,1)
+    }
+
+    #[test]
+    fn test_0x48_pha() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9 ,0x50 ,0x48 ,0xa9 ,0x05 ,0x48,0x00]);
+        println!("stack pointer is {}", cpu.stackpointer);
+        assert_eq!(cpu.mem_read(0x01ff), 0x50);
+        assert_eq!(cpu.mem_read(0x1fe), 0x05);
+        assert_eq!(cpu.stackpointer,0xfd);
+    }
+
+    #[test]
+    fn test_0x68_pla() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9 ,0x50 ,0x48 ,0xa9 ,0x05 ,0x48,0x68,0x68,0x00]);
+        println!("stack pointer is {}", cpu.stackpointer);
+        assert_eq!(cpu.register_a, 0x50);
+        assert_eq!(cpu.stackpointer,0xff);
+    }
+
+    #[test]
+    fn test_0x08_php() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38 ,0x08 ,0x00]);
+        println!("stack pointer is {}", cpu.stackpointer);
+        assert_eq!(cpu.mem_read(0x1ff), 0x31);
+        assert_eq!(cpu.stackpointer,0xfe);
+    }
+
+    #[test]
+    fn test_0x28_plp() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x38 ,0x08,0x18,0x28 ,0x00]);
+        println!("stack pointer is {}", cpu.stackpointer);
+        println!("cpu status is {}", cpu.status);
+        assert_eq!(cpu.mem_read(0x1ff), 0x31);
+        assert_eq!(cpu.status , 0b00110001);
+        assert_eq!(cpu.stackpointer,0xff);
+    }
+
+    #[test]
+    fn test_0x9a_txs() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2 ,0x50 ,0x9a ,0x00]);
+        assert_eq!(cpu.stackpointer,0x50);
+    }
+    #[test]
+    fn test_0xba_tsx() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa2 ,0x50 ,0x9a,0xa2,0x40,0xba ,0x00]);
+        assert_eq!(cpu.register_x,0x50);
     }
 
     
