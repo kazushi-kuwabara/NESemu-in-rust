@@ -1,4 +1,4 @@
-use core::{borrow, time};
+use core::{borrow, panic, time};
 use std::{collections::{btree_map::{self, Values}, HashMap}, fs::read_link, ops::Add, path::is_separator, result};
 
 pub const CARRY_FLAG:u8 = 0b0000_0001;
@@ -559,7 +559,7 @@ impl CPU {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
 
-        let result = self.register_a - value;
+        let result = self.register_a.wrapping_sub(value);
 
         self.status = if result == 0 {
             self.status | 0b0000_0010
@@ -691,21 +691,21 @@ impl CPU {
 
         self.mem_write(0x0100 + (self.stackpointer as u16), hi);
         self.mem_write(0x0100 + ((self.stackpointer -1) as u16), lo);
-        self.stackpointer = self.stackpointer - 2;
+        self.stackpointer = self.stackpointer.wrapping_sub(2);
     }
     //サブルーチン後はjsrの次の命令から開始する必要がある。
     fn push_pc(&mut self){
-        self.push(self.program_counter + 2);
+        self.push(self.program_counter.wrapping_add(2));
     }
     //ただスタックからpcをとり出すだけ。
     fn pop_pc(&mut self) -> u16 {
-        self.stackpointer = self.stackpointer + 2;
+        self.stackpointer = self.stackpointer.wrapping_add(2);
 
         let hi = self.mem_read(0x0100 + (self.stackpointer as u16));
         let lo = self.mem_read(0x0100 + ((self.stackpointer - 1 ) as u16));
 
 
-        let pc = (((hi as u16) << 8)) | (lo as u16) + 1;
+        let pc = (((hi as u16) << 8)) | (lo as u16);
         pc
     }
 
@@ -738,12 +738,12 @@ impl CPU {
     fn jsr(&mut self, mode:&AddressingMode){
         let _value = match mode  {
             &AddressingMode::Absolute => {
-                let value = self.mem_read_u16(self.program_counter);
+                let value = self.get_operand_address(mode);
                 value
             }
 
             _ => {
-                panic!("mode {:?} is not supported" , mode);
+                panic!("mode {:?} is not supported in jsr" , mode);
             }
         };
   
@@ -753,7 +753,8 @@ impl CPU {
     /*jump instruction ends from here */
 
     fn rts(&mut self) {
-         self.program_counter = self.pop_pc() + 1;
+        self.program_counter = self.pop_pc();
+        //self.program_counter += 1;
     }
 
     fn rti(&mut self){
@@ -1528,6 +1529,18 @@ impl CPU {
                 }
                 /* --------- jmp ends here -------------- */
 
+                0x20 => {
+                    self.jsr(&AddressingMode::Absolute);
+                }
+
+                0x60 => {
+                    self.rts();
+                }
+
+                0x40 => {
+                    self.rti();
+                }
+
                 0x00 => {
                     return;
                 }
@@ -1581,8 +1594,9 @@ impl CPU {
                     self.nop();
                 }
 
+               
                 _ => {
-                    todo!("")
+                    panic!("not yet implemented")
                 }
             }
         }
@@ -2155,6 +2169,33 @@ mod test {
         assert_eq!(cpu.register_x,1)
     }
 
+    
+    #[test]
+    fn test_0x20_jsr_absolute() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x20 ,0x06 ,0x06 ,0xa9 ,0x50 ,0x00 ,0xa2 ,0x50 ,0x00]);
+        println!("register_x is {}" , cpu.register_x as u8);
+        println!("register_a is {}" , cpu.register_a );
+        println!("program counter is {}" , cpu.program_counter);
+        assert_eq!(cpu.register_x,0x50);
+        assert_eq!(cpu.register_a, 0);
+    }
+
+    #[test]
+    fn test_0x20_jsr_absolute_and_0x60_rts() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0x20 ,0x06 ,0x06 ,0xa9 ,0x50 ,0x00 ,0xa2 ,0x50 ,0x60]);
+        println!("register_x is {}" , cpu.register_x as u8);
+        println!("register_a is {}" , cpu.register_a );
+        println!("program counter is {}" , cpu.program_counter);
+        println!("(0x01ff) is {}" , cpu.mem_read(0x01ff));
+        println!("(0x01fe) is {}" , cpu.mem_read(0x01fe));
+        assert_eq!(cpu.register_x,0x50);
+        assert_eq!(cpu.register_a, 0x50);
+        assert_eq!(cpu.mem_read(0x1ff),0x06);
+        assert_eq!(cpu.mem_read(0x1fe),0x03);
+    }
+
     #[test]
     fn test_0x48_pha() {
         let mut cpu = CPU::new();
@@ -2240,6 +2281,14 @@ mod test {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9 ,0x7f ,0x18, 0x69, 0x01 ,0x8d ,0x00 ,0x02,0xb8,0x00]);
         assert_eq!(is_flag_set(OVERFLOW_FLAG, cpu.status),false);
+    }
+
+    #[test]
+    fn test_push_pc() {
+        let mut cpu = CPU::new();
+        cpu.program_counter = 0x0606;
+        cpu.push_pc();
+        assert_eq!(cpu.pop_pc(),0x0608);
     }
 
     
