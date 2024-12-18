@@ -221,73 +221,60 @@ impl CPU {
 
 
 
-    fn adc(&mut self, mode:&AddressingMode) {
+    fn adc(&mut self, mode: &AddressingMode) {
+        // メモリ値とキャリーフラグを取得
         let addr = self.get_operand_address(mode);
         let pos = self.mem_read(addr);
-        let tmp = self.register_a;
-        let touple = (pos as u8).overflowing_add(self.status & 0x01);
+        let carry = if self.status & CARRY_FLAG == CARRY_FLAG { 1 } else { 0 };
 
-        let base = touple.0;
+        // 加算処理
+        let tmp = self.register_a; // 元のAレジスタの値を保存
+        let (result1, carry1) = tmp.overflowing_add(pos); // A + メモリ値
+        let (result2, carry2) = result1.overflowing_add(carry); // A + メモリ値 + キャリーフラグ
+        self.register_a = result2; // 計算結果をAレジスタに格納
 
-        let touple2 =  self.register_a.overflowing_add(base as u8);
-
-        self.register_a = touple2.0;
-
-        /* bit operation starts from here */
-
-        if self.status & 0b0000_0001 == 0b0000_0001 {
-            self.status = self.status & 0b1111_1110;
-        }
-
+        // ZフラグとNフラグを更新
         self.update_zero_and_negative_flags(self.register_a);
 
-        if touple.1 | touple2.1 {
-            self.status = self.status | 0x01;
+        // キャリーフラグを更新
+        if carry1 || carry2 {
+            self.status |= CARRY_FLAG; // キャリーフラグをセット
         } else {
-            self.status = self.status & 0b1111_1110;
+            self.status &= !CARRY_FLAG; // キャリーフラグをクリア
         }
 
+        // オーバーフローフラグを更新
         if ((self.register_a ^ tmp) & (self.register_a ^ pos) & 0x80) != 0 {
-            self.status = self.status | 0b01000000;
+            self.status |= OVERFLOW_FLAG; // オーバーフローフラグをセット
         } else {
-            self.status = self.status & 0b10111111;
+            self.status &= !OVERFLOW_FLAG; // オーバーフローフラグをクリア
         }
-        /* bit operation endsuu from here */
-
-        
     }
 
     fn sbc(&mut self , mode:&AddressingMode){
         let addr = self.get_operand_address(mode);
         let pos = self.mem_read(addr);
         let tmp = self.register_a;
-        let touple = (!(pos) as u8).overflowing_add(self.status & 0x01);
+        let base = (!(pos) as u8).wrapping_add((self.status & CARRY_FLAG) as u8);
 
-        let base = touple.0;
-
-        let touple2 =  self.register_a.overflowing_add(base as u8);
-
-        self.register_a = touple2.0;
+        self.register_a =  self.register_a.wrapping_add(base as u8);
 
         /* bit operation starts from here */
-
-        if self.status & 0b0000_0001 == 0b0000_0001 {
-            self.status = self.status & 0b1111_1110;
-        }
-
         self.update_zero_and_negative_flags(self.register_a);
 
 
-        if !(self.status & 0b1000_0000 == 0b1000_0000) {
-            self.status = self.status | 0b0000_0001;
+        if tmp as u16 >= pos as u16 + (1 - (self.status & CARRY_FLAG) as u16) {
+            self.status = self.status | CARRY_FLAG; // 借りが発生しなかった場合
         } else {
-            self.status = self.status & 0b1111_1110;
+            self.status = self.status & !CARRY_FLAG; // 借りが発生した場合
         }
+        
+        
 
         if ((self.register_a ^ tmp) & (self.register_a ^ !(pos)) & 0x80) != 0 {
-            self.status = self.status | 0b01000000;
+            self.status = self.status | OVERFLOW_FLAG;
         } else {
-            self.status = self.status & 0b10111111;
+            self.status = self.status & !OVERFLOW_FLAG;
         }
 
         /* bit operation endsuu from here */
@@ -583,7 +570,7 @@ impl CPU {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
 
-        let result = self.register_x - value;
+        let result = self.register_x.wrapping_sub(value);
 
         self.status = if result == 0 {
             self.status | 0b0000_0010
@@ -607,7 +594,7 @@ impl CPU {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
 
-        let result = self.register_y - value;
+        let result = self.register_y.wrapping_sub(value);
 
         self.status = if result == 0 {
             self.status | 0b0000_0010
@@ -630,16 +617,11 @@ impl CPU {
     /*compare instruction ends here */
 
     /*branch instruction starts from here */
-    fn branch(&mut self, mode: &AddressingMode) {
-        if mode == &AddressingMode::Relative {
-          let addr = self.get_operand_address(mode);
-          self.program_counter = addr;
-        }
-    }
-
     fn bcc(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
+
         if is_flag_set(CARRY_FLAG, self.status) == false {
-            self.branch(mode);
+               self.program_counter = addr;
         }
     }
     fn bcs(&mut self , mode:&AddressingMode){
@@ -657,29 +639,35 @@ impl CPU {
         }
     }
     fn bne(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
         if is_flag_set(ZERO_FLAG, self.status) == false {
-            self.branch(mode);
+            self.program_counter = addr;
         }
     }
     fn bpl(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
         if is_flag_set(NEGATIVE_FLAG, self.status) == false {
-            self.branch(mode);
+            self.program_counter = addr;
         }
     }
     fn bmi(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
         if is_flag_set(NEGATIVE_FLAG, self.status) == true {
-            self.branch(mode);
+            self.program_counter = addr;
         }
     }
     fn bvc(&mut self , mode:&AddressingMode){
+        let addr = self.get_operand_address(mode);
         if is_flag_set(OVERFLOW_FLAG, self.status) == false {
-            self.branch(mode);
+            self.program_counter = addr;
         }
     }
 
     fn bvs(&mut self , mode:&AddressingMode){
+       let addr = self.get_operand_address(mode);
+
         if is_flag_set(OVERFLOW_FLAG, self.status) == true {
-            self.branch(mode);
+            self.program_counter = addr;
         }
     }
     /*branch instruction ends from here */
@@ -1646,7 +1634,7 @@ fn main() {
    let sdl_context = sdl2::init().unwrap();
    let video_subsystem = sdl_context.video().unwrap();
    let window = video_subsystem
-       .window("snake game", (32.0 * 10.0) as u32, (32.0 * 10.0) as u32)
+       .window("Snake game", (32.0 * 10.0) as u32, (32.0 * 10.0) as u32)
        .position_centered()
        .build().unwrap();
 
@@ -1667,6 +1655,7 @@ fn main() {
 
         if read_screnn_state(cpu, &mut screen_state) {
             texture.update(None, &screen_state, 32 * 3).unwrap();
+            canvas.copy(&texture, None, None).unwrap();
             canvas.present();
         }
         ::std::thread::sleep(std::time::Duration::new(0, 70_000));
@@ -2158,6 +2147,13 @@ mod test {
 
         println!("register_x is {}" , cpu.register_x);
         assert_eq!(cpu.register_x,1)
+    }
+
+    #[test]
+    fn test_0xf0_beq_relative() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![0xa9 ,0x00 ,0xf0 ,0x03 ,0xa9 ,0x6,0x00 ,0xa9 ,0x50 ,0x00]);
+        assert_eq!(cpu.register_a,0x50);
     }
 
     #[test]
