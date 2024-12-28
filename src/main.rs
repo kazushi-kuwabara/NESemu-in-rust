@@ -1,5 +1,8 @@
-use core::{borrow, panic, time};
-use std::{collections::{btree_map::{self, Values}, HashMap}, fs::read_link, ops::Add, path::is_separator, result};
+pub mod bus;
+pub mod cartridge;
+use cartridge::Rom;
+use bus::Bus;
+
 
 pub const CARRY_FLAG:u8 = 0b0000_0001;
 pub const INTERRUPT_FLAG:u8 = 0b0000_0100;
@@ -10,9 +13,15 @@ pub const NEGATIVE_FLAG:u8 = 0b1000_0000;
 pub const ZERO_FLAG:u8 = 0b0000_0010;
 pub const OVERFLOW_FLAG:u8 = 0b0100_0000;
 
+
+
+
+
 pub fn is_flag_set(flag:u8,x:u8) -> bool {
       x & flag > 0
 }
+
+
 
 pub struct CPU {
     pub register_a:u8,
@@ -21,7 +30,46 @@ pub struct CPU {
     pub status:u8,
     pub program_counter:u16,
     pub stackpointer:u8,
-    memory: [u8;0xFFFF],
+    //memory: [u8;0xFFFF],
+    pub bus: Bus,
+}
+
+pub trait Mem {
+    fn mem_read(&self, addr:u16) -> u8;
+
+    fn mem_write(&mut self, addr:u16, data:u8);
+
+    fn mem_read_u16(&self, pos:u16) -> u16 {
+        let hi = self.mem_read(pos + 1) as u16;
+        let lo = self.mem_read(pos) as u16;
+
+        (hi << 8) | (lo as u16)
+    }
+
+    fn mem_write_u16(&mut self, pos:u16, data:u16) {
+        let hi = (data >> 8) as u8;
+        let lo = (data & 0xff) as u8;
+
+        self.mem_write(pos, lo);
+        self.mem_write(pos + 1, hi);
+    }
+}
+
+impl Mem for CPU {
+    fn mem_read(&self, addr:u16) -> u8 {
+        self.bus.mem_read(addr)
+    }
+    fn mem_write(&mut self, addr:u16, data:u8) {
+        self.bus.mem_write(addr, data)
+    }
+
+    fn mem_read_u16(&self , pos:u16) -> u16 {
+        self.bus.mem_read_u16(pos)
+    }
+    fn mem_write_u16(&mut self, pos:u16, data:u16) {
+        self.bus.mem_write_u16(pos, data)
+    }
+
 }
 
 #[derive(Debug, PartialEq)]
@@ -114,13 +162,7 @@ impl CPU {
     }
 
 
-    fn mem_read(&self,addr:u16) ->u8 {
-        self.memory[addr as usize]
-    }
 
-    fn mem_write(&mut self , addr:u16, data:u8) {
-        self.memory[addr as usize] = data;
-    }
 
 
     pub fn load_and_run(&mut self, program:Vec<u8>) {
@@ -130,24 +172,12 @@ impl CPU {
     }
 
     pub fn load(&mut self , program:Vec<u8>) {
-        self.memory[0x0600 .. (0x0600 + program.len())].copy_from_slice(&program[..]);
+     for i in 0.. (program.len() as u16) {
+        self.mem_write(0x0600 + i, program[i as usize]);
+     }
         self.mem_write_u16(0xFFFC, 0x0600);
     }
 
-    fn mem_read_u16(&mut self , pos:u16) -> u16 {
-        let lo = self.mem_read(pos) as u16;
-        let hi = self.mem_read(pos + 1) as u16;
-
-        (hi << 8) | (lo as u16)
-    }
-
-    fn mem_write_u16(&mut self, pos:u16, data:u16) {
-        let hi = (data >> 8) as u8;
-        let lo = (data & 0xff) as u8;
-
-        self.mem_write(pos, lo);
-        self.mem_write(pos+1, hi);
-    }
 
     pub fn reset(&mut self) {
         self.register_a = 0;
@@ -160,7 +190,7 @@ impl CPU {
     }
 
 
-    pub fn new() -> Self {
+    pub fn new(bus: Bus) -> Self {
         CPU {
             register_a:0,
             register_x:0,
@@ -168,7 +198,8 @@ impl CPU {
             status:0,
             program_counter:0,
             stackpointer:0xff,
-            memory:[0u8; 0xFFFF],
+            //memory:[0u8; 0xFFFF],
+            bus:bus,
         }
     }
 
@@ -849,6 +880,7 @@ impl CPU {
         loop {
             callback(self);
             let code = self.mem_read(self.program_counter);
+            println!("code at {:#x} is {:#x}" , self.program_counter  , code);
             self.program_counter += 1;
             match code {
                 /* ----------SEC is stats here --------------- */
@@ -1602,35 +1634,6 @@ use sdl2::pixels::PixelFormatEnum;
 
 
 fn main() {
-
-    let game_code = vec![
-    0x20, 0x06, 0x06, 0x20, 0x38, 0x06, 0x20, 0x0d, 0x06, 0x20, 0x2a, 0x06, 0x60, 0xa9, 0x02, 0x85,
-    0x02, 0xa9, 0x04, 0x85, 0x03, 0xa9, 0x11, 0x85, 0x10, 0xa9, 0x10, 0x85, 0x12, 0xa9, 0x0f, 0x85,
-    0x14, 0xa9, 0x04, 0x85, 0x11, 0x85, 0x13, 0x85, 0x15, 0x60, 0xa5, 0xfe, 0x85, 0x00, 0xa5, 0xfe,
-    0x29, 0x03, 0x18, 0x69, 0x02, 0x85, 0x01, 0x60, 0x20, 0x4d, 0x06, 0x20, 0x8d, 0x06, 0x20, 0xc3,
-    0x06, 0x20, 0x19, 0x07, 0x20, 0x20, 0x07, 0x20, 0x2d, 0x07, 0x4c, 0x38, 0x06, 0xa5, 0xff, 0xc9,
-    0x77, 0xf0, 0x0d, 0xc9, 0x64, 0xf0, 0x14, 0xc9, 0x73, 0xf0, 0x1b, 0xc9, 0x61, 0xf0, 0x22, 0x60,
-    0xa9, 0x04, 0x24, 0x02, 0xd0, 0x26, 0xa9, 0x01, 0x85, 0x02, 0x60, 0xa9, 0x08, 0x24, 0x02, 0xd0,
-    0x1b, 0xa9, 0x02, 0x85, 0x02, 0x60, 0xa9, 0x01, 0x24, 0x02, 0xd0, 0x10, 0xa9, 0x04, 0x85, 0x02,
-    0x60, 0xa9, 0x02, 0x24, 0x02, 0xd0, 0x05, 0xa9, 0x08, 0x85, 0x02, 0x60, 0x60, 0x20, 0x94, 0x06,
-    0x20, 0xa8, 0x06, 0x60, 0xa5, 0x00, 0xc5, 0x10, 0xd0, 0x0d, 0xa5, 0x01, 0xc5, 0x11, 0xd0, 0x07,
-    0xe6, 0x03, 0xe6, 0x03, 0x20, 0x2a, 0x06, 0x60, 0xa2, 0x02, 0xb5, 0x10, 0xc5, 0x10, 0xd0, 0x06,
-    0xb5, 0x11, 0xc5, 0x11, 0xf0, 0x09, 0xe8, 0xe8, 0xe4, 0x03, 0xf0, 0x06, 0x4c, 0xaa, 0x06, 0x4c,
-    0x35, 0x07, 0x60, 0xa6, 0x03, 0xca, 0x8a, 0xb5, 0x10, 0x95, 0x12, 0xca, 0x10, 0xf9, 0xa5, 0x02,
-    0x4a, 0xb0, 0x09, 0x4a, 0xb0, 0x19, 0x4a, 0xb0, 0x1f, 0x4a, 0xb0, 0x2f, 0xa5, 0x10, 0x38, 0xe9,
-    0x20, 0x85, 0x10, 0x90, 0x01, 0x60, 0xc6, 0x11, 0xa9, 0x01, 0xc5, 0x11, 0xf0, 0x28, 0x60, 0xe6,
-    0x10, 0xa9, 0x1f, 0x24, 0x10, 0xf0, 0x1f, 0x60, 0xa5, 0x10, 0x18, 0x69, 0x20, 0x85, 0x10, 0xb0,
-    0x01, 0x60, 0xe6, 0x11, 0xa9, 0x06, 0xc5, 0x11, 0xf0, 0x0c, 0x60, 0xc6, 0x10, 0xa5, 0x10, 0x29,
-    0x1f, 0xc9, 0x1f, 0xf0, 0x01, 0x60, 0x4c, 0x35, 0x07, 0xa0, 0x00, 0xa5, 0xfe, 0x91, 0x00, 0x60,
-    0xa6, 0x03, 0xa9, 0x00, 0x81, 0x10, 0xa2, 0x00, 0xa9, 0x01, 0x81, 0x10, 0x60, 0xa2, 0x00, 0xea,
-    0xea, 0xca, 0xd0, 0xfb, 0x60
-    ];
-
-   let mut cpu = CPU::new();
-   cpu.load(game_code);
-   cpu.reset();
-   
-
    let sdl_context = sdl2::init().unwrap();
    let video_subsystem = sdl_context.video().unwrap();
    let window = video_subsystem
@@ -1645,6 +1648,13 @@ fn main() {
     let creator = canvas.texture_creator();
     let mut texture = creator
         .create_texture_target(PixelFormatEnum::RGB24, 32, 32).unwrap();
+
+    let bytes:Vec<u8> = std::fs::read("snake.nes").unwrap(); 
+    let rom = Rom::new(&bytes).unwrap();
+    let bus = Bus::new(rom);
+     
+    let mut cpu = CPU::new(bus);
+    cpu.reset();
 
     let mut screen_state = [0 as u8; 32 * 3 * 32];
     let mut rng  = rand::thread_rng();
@@ -1722,7 +1732,7 @@ fn color(byte: u8) -> Color {
 
 }
 
-
+/* 
 
 #[cfg(test)]
 mod test {
@@ -2289,3 +2299,4 @@ mod test {
 
     
 }
+    */
